@@ -21,10 +21,12 @@ jobs:
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          DOCKER_IMAGE: ${{ secrets.DOCKER_IMAGE }}
         run: |
           mvn clean compile jib:build \
             -Djib.to.auth.username=$DOCKER_USERNAME \
-            -Djib.to.auth.password=$DOCKER_PASSWORD
+            -Djib.to.auth.password=$DOCKER_PASSWORD \
+            -Djib.to.image=$DOCKER_IMAGE
 
       - name: Deploy to Render
         env:
