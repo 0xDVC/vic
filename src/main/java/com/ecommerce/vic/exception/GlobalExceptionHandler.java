@@ -118,6 +118,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidTokenException.class)
     public ResponseEntity<ErrorResponse> handleInvalidToken(InvalidTokenException ex) {
         ErrorResponse error = new ErrorResponse(
+                LocalDateTime.now(),
             HttpStatus.BAD_REQUEST.value(),
             "Invalid Token",
             ex.getMessage()
@@ -128,7 +129,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(CustomDisabledException.class)
     public ResponseEntity<ErrorResponse> handleDisabledAccount(CustomDisabledException ex) {
         ErrorResponse error = new ErrorResponse(
-            HttpStatus.FORBIDDEN.value(),
+                LocalDateTime.now(),
+                HttpStatus.FORBIDDEN.value(),
             "Account Disabled",
             ex.getMessage()
         );

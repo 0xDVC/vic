@@ -7,12 +7,14 @@ import com.ecommerce.vic.model.VerificationToken;
 import com.ecommerce.vic.repository.UserRepository;
 import com.ecommerce.vic.repository.VerificationTokenRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import java.time.LocalDateTime;
-import java.util.UUID;
-import java.util.Random;
+import java.util.*;
+import java.util.stream.Collectors;
+
 import com.ecommerce.vic.exception.ResourceNotFoundException;
 
 @Service
@@ -25,37 +27,47 @@ public class VerificationService {
     private final PasswordEncoder passwordEncoder;
 
     public void sendEmailVerification(User user) {
+        // Check if there's an existing active token
+        if (tokenRepository.existsByUserAndTokenTypeAndUsedFalseAndExpiryDateAfter(
+                user,
+                VerificationToken.TokenType.EMAIL_VERIFICATION,
+                LocalDateTime.now())) {
+            throw new IllegalStateException("Active verification token already exists");
+        }
+
         String token = generateVerificationToken();
         saveVerificationToken(user, token, VerificationToken.TokenType.EMAIL_VERIFICATION);
         emailService.sendVerificationEmail(user.getEmail(), token);
     }
 
     public void sendSmsVerification(User user) {
+        // Fixed token type for SMS verification
+        if (tokenRepository.existsByUserAndTokenTypeAndUsedFalseAndExpiryDateAfter(
+                user,
+                VerificationToken.TokenType.SMS_VERIFICATION,  // Changed from EMAIL to SMS
+                LocalDateTime.now())) {
+            throw new IllegalStateException("Active verification code already exists");
+        }
+
         String code = generateSmsCode();
-        saveVerificationToken(user, code, VerificationToken.TokenType.EMAIL_VERIFICATION);
+        saveVerificationToken(user, code, VerificationToken.TokenType.SMS_VERIFICATION);
         smsService.sendVerificationSms(user.getPhoneNumber(), code);
     }
 
     @Transactional
     public void verifyEmail(String email, String token) {
         User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         VerificationToken verificationToken = tokenRepository.findByTokenAndTokenType(
-                token, VerificationToken.TokenType.EMAIL_VERIFICATION)
-            .orElseThrow(() -> new InvalidTokenException("Invalid verification token"));
+                        token, VerificationToken.TokenType.EMAIL_VERIFICATION)
+                .orElseThrow(() -> new InvalidTokenException("Invalid verification token"));
 
-        if (verificationToken.isExpired()) {
-            throw new InvalidTokenException("Token has expired");
-        }
-
-        if (verificationToken.isUsed()) {
-            throw new InvalidTokenException("Token has already been used");
-        }
+        validateTokenAndUser(verificationToken, user);
 
         user.setEmailVerified(true);
         verificationToken.setUsed(true);
-        
+
         userRepository.save(user);
         tokenRepository.save(verificationToken);
     }
@@ -63,23 +75,17 @@ public class VerificationService {
     @Transactional
     public void verifyPhone(String email, String code) {
         User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         VerificationToken verificationToken = tokenRepository.findByTokenAndTokenType(
-                code, VerificationToken.TokenType.SMS_VERIFICATION)
-            .orElseThrow(() -> new InvalidTokenException("Invalid verification code"));
+                        code, VerificationToken.TokenType.SMS_VERIFICATION)
+                .orElseThrow(() -> new InvalidTokenException("Invalid verification code"));
 
-        if (verificationToken.isExpired()) {
-            throw new InvalidTokenException("Code has expired");
-        }
-
-        if (verificationToken.isUsed()) {
-            throw new InvalidTokenException("Code has already been used");
-        }
+        validateTokenAndUser(verificationToken, user);
 
         user.setPhoneVerified(true);
         verificationToken.setUsed(true);
-        
+
         userRepository.save(user);
         tokenRepository.save(verificationToken);
     }
@@ -87,7 +93,15 @@ public class VerificationService {
     @Transactional
     public void initiatePasswordReset(String email) {
         User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // Fixed token type for password reset
+        if (tokenRepository.existsByUserAndTokenTypeAndUsedFalseAndExpiryDateAfter(
+                user,
+                VerificationToken.TokenType.PASSWORD_RESET,  // Changed from EMAIL to PASSWORD_RESET
+                LocalDateTime.now())) {
+            throw new IllegalStateException("Active password reset token already exists");
+        }
 
         String token = generateVerificationToken();
         saveVerificationToken(user, token, VerificationToken.TokenType.PASSWORD_RESET);
@@ -97,25 +111,33 @@ public class VerificationService {
     @Transactional
     public void resetPassword(PasswordResetConfirmation request) {
         User user = userRepository.findByEmail(request.email())
-            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         VerificationToken token = tokenRepository.findByTokenAndTokenType(
-                request.token(), VerificationToken.TokenType.PASSWORD_RESET)
-            .orElseThrow(() -> new InvalidTokenException("Invalid reset token"));
+                        request.token(), VerificationToken.TokenType.PASSWORD_RESET)
+                .orElseThrow(() -> new InvalidTokenException("Invalid reset token"));
 
-        if (token.isExpired()) {
-            throw new InvalidTokenException("Reset token has expired");
-        }
-
-        if (token.isUsed()) {
-            throw new InvalidTokenException("Reset token has already been used");
-        }
+        validateTokenAndUser(token, user);
 
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         token.setUsed(true);
-        
+
         userRepository.save(user);
         tokenRepository.save(token);
+    }
+
+    private void validateTokenAndUser(VerificationToken token, User user) {
+        if (!token.getUser().getUserId().equals(user.getUserId())) {  // Changed from getUserId to getId
+            throw new InvalidTokenException("Token does not belong to this user");
+        }
+
+        if (token.isExpired()) {
+            throw new InvalidTokenException("Token has expired");
+        }
+
+        if (token.isUsed()) {
+            throw new InvalidTokenException("Token has already been used");
+        }
     }
 
     private String generateVerificationToken() {
@@ -128,13 +150,43 @@ public class VerificationService {
 
     private void saveVerificationToken(User user, String token, VerificationToken.TokenType type) {
         VerificationToken verificationToken = VerificationToken.builder()
-            .token(token)
-            .user(user)
-            .tokenType(type)
-            .expiryDate(LocalDateTime.now().plusHours(24))
-            .used(false)
-            .build();
-        
+                .token(token)
+                .user(user)
+                .tokenType(type)
+                .expiryDate(LocalDateTime.now().plusHours(24))
+                .used(false)
+                .build();
+
         tokenRepository.save(verificationToken);
+    }
+
+    // Optional utility methods
+    @Scheduled(cron = "0 0 2 * * *")
+    @Transactional
+    public void cleanupExpiredTokens() {
+        List<VerificationToken> expiredTokens = tokenRepository
+                .findByExpiryDateBeforeAndUsed(LocalDateTime.now(), false);
+        tokenRepository.deleteAll(expiredTokens);
+    }
+
+    public boolean isEmailVerified(User user) {  // Changed to accept User instead of userId
+        return tokenRepository
+                .findByUserAndTokenType(user, VerificationToken.TokenType.EMAIL_VERIFICATION)
+                .map(VerificationToken::isUsed)
+                .orElse(false);
+    }
+
+    public VerificationToken validateToken(String token) {
+        return tokenRepository.findByToken(token)
+                .orElseThrow(() -> new InvalidTokenException("Token not found"));
+    }
+
+    public List<VerificationToken> getUserActiveTokens(User user) {  // Changed to accept User instead of userId
+        return Arrays.stream(VerificationToken.TokenType.values())
+                .map(tokenType -> tokenRepository.findByUserAndTokenType(user, tokenType))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .filter(token -> !token.isExpired() && !token.isUsed())
+                .collect(Collectors.toList());
     }
 }

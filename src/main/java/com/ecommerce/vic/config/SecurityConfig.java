@@ -35,17 +35,58 @@ public class SecurityConfig {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/login", "/auth/register", 
-                                "/auth/verify/**", "/auth/password/**").permitAll()
-                        .requestMatchers("/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/products/create").hasRole("ADMIN")
-                        .requestMatchers("/products/*/update").hasRole("ADMIN")
-                        .requestMatchers("/products/*/delete").hasRole("ADMIN")
-                        .requestMatchers("/reports/**").hasRole("ADMIN")
+                        .requestMatchers(
+                                "/auth/login",
+                                "/auth/register",
+                                "/auth/verify/**",
+                                "/auth/password/**",
 
-                        .requestMatchers("/orders/**").authenticated()
-                        .requestMatchers("/cart/**").authenticated()
-                        .requestMatchers("/profile/**").authenticated()
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/webjars/**",
+
+                                "/products",
+                                "/products/*",
+                                "/categories",
+                                "/categories/*",
+                                "/search/**",
+
+                                "/actuator/health",
+
+                                "/error",
+                                "/favicon.ico",
+                                "/*.png",
+                                "/*.gif",
+                                "/*.svg",
+                                "/*.jpg",
+                                "/*.html",
+                                "/*.css",
+                                "/*.js"
+                        ).permitAll()
+
+                        .requestMatchers(
+                                "/admin/**",
+                                "/products/create",
+                                "/products/*/update",
+                                "/products/*/delete",
+                                "/categories/create",
+                                "/categories/*/update",
+                                "/categories/*/delete",
+                                "/users/**",
+                                "/reports/**",
+                                "/actuator/**"
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(
+                                "/orders/**",
+                                "/cart/**",
+                                "/profile/**",
+                                "/addresses/**",
+                                "/payments/**",
+                                "/wishlist/**",
+                                "/reviews/**"
+                        ).authenticated()
 
                         .anyRequest().authenticated()
                 )
