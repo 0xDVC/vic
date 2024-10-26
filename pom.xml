@@ -147,7 +147,7 @@
             <image>eclipse-temurin:17-jre-alpine</image>
         </from>
         <to>
-            <image>${jib.to.image}</image>
+            <image>${docker.image}</image>
         </to>
         <container>
             <mainClass>com.ecommerce.vic.VicApplication</mainClass>
