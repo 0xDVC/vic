@@ -26,7 +26,7 @@ jobs:
           mvn clean compile jib:build \
             -Djib.to.auth.username=$DOCKER_USERNAME \
             -Djib.to.auth.password=$DOCKER_PASSWORD \
-            -Dimage=dvc77/vic
+            -Djib.to.image=$DOCKER_IMAGE
 
       - name: Deploy to Render
         env:
