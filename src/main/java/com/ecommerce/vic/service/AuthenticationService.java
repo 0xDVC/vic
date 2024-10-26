@@ -4,9 +4,6 @@ import java.time.LocalDateTime;
 import java.util.Random;
 import java.util.UUID;
 
-import com.ecommerce.vic.exception.CustomDisabledException;
-import com.ecommerce.vic.model.VerificationToken;
-import com.ecommerce.vic.repository.VerificationTokenRepository;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -19,16 +16,21 @@ import com.ecommerce.vic.dto.auth.AdminInviteRequest;
 import com.ecommerce.vic.dto.auth.AuthenticationRequest;
 import com.ecommerce.vic.dto.auth.AuthenticationResponse;
 import com.ecommerce.vic.dto.auth.RegisterRequest;
+import com.ecommerce.vic.exception.CustomDisabledException;
 import com.ecommerce.vic.exception.EmailAlreadyExistsException;
 import com.ecommerce.vic.exception.UnauthorizedException;
 import com.ecommerce.vic.model.User;
+import com.ecommerce.vic.model.VerificationToken;
 import com.ecommerce.vic.repository.UserRepository;
+import com.ecommerce.vic.repository.VerificationTokenRepository;
 import com.ecommerce.vic.security.JwtService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthenticationService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -41,7 +43,10 @@ public class AuthenticationService {
 
     @Transactional
     public AuthenticationResponse register(RegisterRequest request) {
+        log.info("Attempting to register new user with email: {}", request.email());
+        
         if (userRepository.findByEmail(request.email()).isPresent()) {
+            log.warn("Registration failed - email already exists: {}", request.email());
             throw new EmailAlreadyExistsException("Email already registered");
         }
 
@@ -64,7 +69,10 @@ public class AuthenticationService {
         userRepository.save(user);
         verificationService.sendEmailVerification(user);
 
+        log.info("Successfully registered new user with email: {}", user.getEmail());
+        
         if (request.phone() != null) {
+            log.debug("Sending SMS verification for user: {}", user.getEmail());
             verificationService.sendSmsVerification(user);
         }
 
@@ -78,11 +86,13 @@ public class AuthenticationService {
     }
 
     public AuthenticationResponse authenticate(AuthenticationRequest request) {
+        log.info("Authentication attempt for user: {}", request.email());
+        
         var user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         if (!user.isEmailVerified()) {
-            // Optionally resend verification email
+            log.warn("Authentication failed - email not verified for user: {}", request.email());
             verificationService.sendEmailVerification(user);
             return AuthenticationResponse.builder()
                     .requiresVerification(true)
@@ -92,6 +102,7 @@ public class AuthenticationService {
         }
 
         if (!user.isEnabled()) {
+            log.warn("Authentication failed - account disabled for user: {}", request.email());
             throw new CustomDisabledException("Account is disabled");
         }
 
@@ -109,6 +120,7 @@ public class AuthenticationService {
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
 
+        log.info("Successfully authenticated user: {}", request.email());
         return AuthenticationResponse.builder()
                 .token(jwt)
                 .isVerified(true)

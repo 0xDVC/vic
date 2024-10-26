@@ -1,24 +1,32 @@
 package com.ecommerce.vic.service;
 
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.Random;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.ecommerce.vic.dto.auth.PasswordResetConfirmation;
 import com.ecommerce.vic.exception.InvalidTokenException;
+import com.ecommerce.vic.exception.ResourceNotFoundException;
 import com.ecommerce.vic.model.User;
 import com.ecommerce.vic.model.VerificationToken;
 import com.ecommerce.vic.repository.UserRepository;
 import com.ecommerce.vic.repository.VerificationTokenRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.stream.Collectors;
 
-import com.ecommerce.vic.exception.ResourceNotFoundException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class VerificationService {
     private final VerificationTokenRepository tokenRepository;
     private final UserRepository userRepository;
@@ -27,17 +35,18 @@ public class VerificationService {
     private final PasswordEncoder passwordEncoder;
 
     public void sendEmailVerification(User user) {
-        // Check if there's an existing active token
+        log.debug("Attempting to send email verification for user: {}", user.getEmail());
+        
         if (tokenRepository.existsByUserAndTokenTypeAndUsedFalseAndExpiryDateAfter(
-                user,
-                VerificationToken.TokenType.EMAIL_VERIFICATION,
-                LocalDateTime.now())) {
+                user, VerificationToken.TokenType.EMAIL_VERIFICATION, LocalDateTime.now())) {
+            log.warn("Active verification token already exists for user: {}", user.getEmail());
             throw new IllegalStateException("Active verification token already exists");
         }
 
         String token = generateVerificationToken();
         saveVerificationToken(user, token, VerificationToken.TokenType.EMAIL_VERIFICATION);
         emailService.sendVerificationEmail(user.getEmail(), token);
+        log.info("Email verification sent successfully to: {}", user.getEmail());
     }
 
     public void sendSmsVerification(User user) {
@@ -164,9 +173,11 @@ public class VerificationService {
     @Scheduled(cron = "0 0 2 * * *")
     @Transactional
     public void cleanupExpiredTokens() {
+        log.info("Starting scheduled cleanup of expired tokens");
         List<VerificationToken> expiredTokens = tokenRepository
                 .findByExpiryDateBeforeAndUsed(LocalDateTime.now(), false);
         tokenRepository.deleteAll(expiredTokens);
+        log.info("Completed cleanup of {} expired tokens", expiredTokens.size());
     }
 
     public boolean isEmailVerified(User user) {  // Changed to accept User instead of userId

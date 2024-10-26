@@ -14,9 +14,9 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 @Configuration
 @OpenAPIDefinition(
         info = @Info(
-                title = "Basic E-commerce API",
+                title = "Basic E-Commerce API",
                 version = "1.0",
-                description = "API E-commerce Platform"
+                description = "E-Commerce API Platform"
         ),
         servers = {
                 @Server(url = "/api/v1", description = "Default API server")
